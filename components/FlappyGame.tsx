@@ -17,6 +17,7 @@ export default function FlappyGame({
   const engineRef = useRef<GameEngine | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [score, setScore] = useState(0);
+  const scoreRef = useRef(0); // Used to track score without triggering React re-renders
 
   const bgOffsetRef = useRef({ jeepneys: 0, street: 0 });
 
@@ -32,12 +33,9 @@ export default function FlappyGame({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Store cached gradients to prevent re-calculating them every frame (Huge performance boost)
     let skyGrad: CanvasGradient | null = null;
-    let pipeGrad: CanvasGradient | null = null;
 
     const resizeCanvas = () => {
-      // Cap DPR at 2 for mobile performance. Rendering at 3x or 4x causes severe lag on phones.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const logicalWidth = window.innerWidth;
       const logicalHeight = window.innerHeight;
@@ -47,22 +45,15 @@ export default function FlappyGame({
       canvas.style.width = `${logicalWidth}px`;
       canvas.style.height = `${logicalHeight}px`;
 
-      // Scale the context so we can draw using logical coordinates
-      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
       engineRef.current = new GameEngine(logicalWidth, logicalHeight);
 
-      // Cache Gradients
       skyGrad = ctx.createLinearGradient(0, 0, 0, logicalHeight);
       skyGrad.addColorStop(0, "#FF7F50");
       skyGrad.addColorStop(0.5, "#FF6B6B");
       skyGrad.addColorStop(1, "#4A0072");
-
-      pipeGrad = ctx.createLinearGradient(0, 0, 90, 0); // Width is 90
-      pipeGrad.addColorStop(0, "#FF8C00");
-      pipeGrad.addColorStop(0.5, "#FFD700");
-      pipeGrad.addColorStop(1, "#FF8C00");
     };
 
     resizeCanvas();
@@ -73,7 +64,6 @@ export default function FlappyGame({
       engineRef.current?.flap();
     };
 
-    // Prevent context menu on long press for mobile
     const handleContextMenu = (e: Event) => e.preventDefault();
 
     canvas.addEventListener("touchstart", handleInput, { passive: false });
@@ -88,24 +78,23 @@ export default function FlappyGame({
     });
     canvas.addEventListener("mousedown", handleInput);
 
+    // Preload jumpscare images
     const jumpScareImgs = jumpscareImages.map((src) => {
       const img = new Image();
       img.src = src;
       return img;
     });
 
+    // Jumpscare Timer Variables
     let jumpScareTimer = 0;
-    let nextJumpScareThreshold = 3 + Math.random() * 12;
+    let nextJumpScareThreshold = 3 + Math.random() * 6; // Random between 3s and 9s
     let activeJumpScareImg: HTMLImageElement | null = null;
-    let jumpScareAlpha = 0;
     let jumpScareActiveTime = 0;
     let redFlashAlpha = 0;
 
-    // Fixed Timestep Variables (Ensures game runs at same speed on 60Hz and 120Hz screens)
     let lastTime = performance.now();
     let accumulator = 0;
-    const step = 1 / 60; // 60 updates per second
-
+    const step = 1 / 60;
     let animationFrameId: number;
 
     const drawJeepney = (x: number, y: number, scale: number) => {
@@ -162,7 +151,6 @@ export default function FlappyGame({
 
       let isOver = false;
 
-      // Fixed Timestep Update Loop
       while (accumulator >= step) {
         engine.update();
         accumulator -= step;
@@ -178,88 +166,66 @@ export default function FlappyGame({
         return;
       }
 
-      setScore(engine.score);
+      // Update score state only when it changes, using a ref to avoid restarting the useEffect
+      if (engine.score !== scoreRef.current) {
+        scoreRef.current = engine.score;
+        setScore(engine.score);
+      }
+
       const w = window.innerWidth;
       const h = window.innerHeight;
 
       bgOffsetRef.current.jeepneys += engine.pipeSpeed * 0.5 * (deltaTime * 60);
       bgOffsetRef.current.street += engine.pipeSpeed * (deltaTime * 60);
 
-      // --- RANDOM JUMPSCARE LOGIC ---
+      // --- BIRD JUMPSCARE LOGIC ---
       if (!activeJumpScareImg) {
         jumpScareTimer += deltaTime;
         if (jumpScareTimer >= nextJumpScareThreshold) {
           activeJumpScareImg =
             jumpScareImgs[Math.floor(Math.random() * jumpScareImgs.length)];
-          jumpScareAlpha = 0;
           jumpScareActiveTime = 0;
           jumpScareTimer = 0;
-          nextJumpScareThreshold = 3 + Math.random() * 12;
-          redFlashAlpha = 0.8;
+          nextJumpScareThreshold = 3 + Math.random() * 6;
+          redFlashAlpha = 0.6; // Quick red flash
         }
       } else {
         jumpScareActiveTime += deltaTime;
-        if (jumpScareActiveTime < 0.1) {
-          jumpScareAlpha = 1;
-        } else if (jumpScareActiveTime < 0.8) {
-          jumpScareAlpha = 1;
-        } else if (jumpScareActiveTime < 1.2) {
-          jumpScareAlpha = 1 - (jumpScareActiveTime - 0.8) / 0.4;
-        } else {
+        // Jumpscare lasts exactly 0.5 seconds
+        if (jumpScareActiveTime > 0.5) {
           activeJumpScareImg = null;
         }
       }
 
       if (redFlashAlpha > 0) {
-        redFlashAlpha -= deltaTime * 2;
+        redFlashAlpha -= deltaTime * 4;
         if (redFlashAlpha < 0) redFlashAlpha = 0;
       }
 
       // --- RENDERING ---
 
-      // 1. Sky Gradient (Cached)
       if (skyGrad) {
         ctx.fillStyle = skyGrad;
         ctx.fillRect(0, 0, w, h);
       }
 
-      // Sun
       ctx.fillStyle = "rgba(255, 255, 200, 0.8)";
       ctx.beginPath();
       ctx.arc(w * 0.7, h * 0.3, 80, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. Draw Giant Jumpscare Face
-      if (activeJumpScareImg && activeJumpScareImg.complete) {
-        ctx.save();
-        ctx.globalAlpha = jumpScareAlpha;
-        const faceSize = h * 1.3;
-        const faceX = w / 2 - faceSize / 2;
-        const faceY = h / 2 - faceSize / 2;
-
-        ctx.beginPath();
-        ctx.arc(w / 2, h / 2, faceSize / 2, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(activeJumpScareImg, faceX, faceY, faceSize, faceSize);
-        ctx.restore();
-      }
-
-      // 3. Midground Jeepneys
       let jeepOffset = -(bgOffsetRef.current.jeepneys % 500);
       for (let x = jeepOffset - 150; x < w + 100; x += 500) {
         drawJeepney(x, h - 130, 1.2);
       }
 
-      // 4. Pipes
       engine.pipes.forEach((pipe) => {
-        if (pipeGrad) {
-          // Gradient is 90px wide, shift it to match pipe.x
-          const grad = ctx.createLinearGradient(pipe.x, 0, pipe.x + 90, 0);
-          grad.addColorStop(0, "#FF8C00");
-          grad.addColorStop(0.5, "#FFD700");
-          grad.addColorStop(1, "#FF8C00");
-          ctx.fillStyle = grad;
-        }
+        const grad = ctx.createLinearGradient(pipe.x, 0, pipe.x + 90, 0);
+        grad.addColorStop(0, "#FF8C00");
+        grad.addColorStop(0.5, "#FFD700");
+        grad.addColorStop(1, "#FF8C00");
+        ctx.fillStyle = grad;
+
         ctx.strokeStyle = "#8B4513";
         ctx.lineWidth = 4;
 
@@ -276,7 +242,6 @@ export default function FlappyGame({
         ctx.fillRect(pipe.x + 50, pipe.gapY + pipe.gapHeight + 10, 25, h);
       });
 
-      // 5. Street Layer
       ctx.fillStyle = "#1A1A1A";
       ctx.fillRect(0, h - 80, w, 80);
       ctx.fillStyle = "#FFF";
@@ -285,7 +250,7 @@ export default function FlappyGame({
         ctx.fillRect(i, h - 40, 40, 5);
       }
 
-      // 6. Avatar with Wings
+      // --- DRAW BIRD & JUMPSCARE ---
       if (imageRef.current && imageRef.current.complete) {
         ctx.save();
         ctx.translate(engine.bird.x, engine.bird.y);
@@ -320,7 +285,7 @@ export default function FlappyGame({
         ctx.stroke();
         ctx.restore();
 
-        // Draw Avatar Image
+        // Draw normal Avatar face
         ctx.save();
         ctx.beginPath();
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
@@ -334,17 +299,29 @@ export default function FlappyGame({
         );
         ctx.restore();
 
-        // Draw border around avatar
         ctx.beginPath();
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.strokeStyle = "#000";
         ctx.lineWidth = 4;
         ctx.stroke();
 
+        // DRAW JUMPSCARE OVER BIRD
+        // Bird is 80x80 (radius*2). Jumpscare is 160x160 (twice the size).
+        if (activeJumpScareImg && activeJumpScareImg.complete) {
+          const scareSize = 160;
+          ctx.drawImage(
+            activeJumpScareImg,
+            -scareSize / 2,
+            -scareSize / 2,
+            scareSize,
+            scareSize,
+          );
+        }
+
         ctx.restore();
       }
 
-      // 7. Red Flash Overlay for Jumpscare
+      // Red Flash Overlay
       if (redFlashAlpha > 0) {
         ctx.fillStyle = `rgba(150, 0, 0, ${redFlashAlpha})`;
         ctx.fillRect(0, 0, w, h);
@@ -363,7 +340,7 @@ export default function FlappyGame({
       canvas.removeEventListener("mousedown", handleInput);
       canvas.removeEventListener("contextmenu", handleContextMenu);
     };
-  }, [onGameOver, jumpscareImages]);
+  }, [onGameOver, jumpscareImages]); // Removed 'score' from dependency array
 
   return (
     <div
@@ -380,6 +357,7 @@ export default function FlappyGame({
         className="w-full h-full block"
         style={{ touchAction: "none" }}
       />
+
       <div className="absolute top-8 left-1/2 -translate-x-1/2 text-6xl font-extrabold text-white drop-shadow-[3px_3px_0_rgb(220,38,38)] pointer-events-none z-10">
         {score}
       </div>

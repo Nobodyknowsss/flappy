@@ -19,11 +19,11 @@ export class GameEngine {
   bird: Bird;
   pipes: Pipe[] = [];
   score: number = 0;
-  gravity: number = 0.2;
-  flapStrength: number = -6;
-  maxFallSpeed: number = 4;
-  basePipeSpeed: number = 1.5;
-  pipeSpeed: number = 1.5;
+  gravity: number = 0.45; // Faster fall
+  flapStrength: number = -8; // Higher jump to match faster fall
+  maxFallSpeed: number = 10; // Allows quicker descents
+  basePipeSpeed: number = 2.8; // Faster base speed
+  pipeSpeed: number = 2.8;
   isGameOver: boolean = false;
 
   constructor(width: number, height: number) {
@@ -40,10 +40,10 @@ export class GameEngine {
   }
 
   spawnPipe() {
-    // Gap height is now 35% of the screen height, making it responsive
-    const gapHeight = Math.max(220, this.canvasHeight * 0.35);
-    const minGap = 80;
-    const maxGap = this.canvasHeight - gapHeight - 120; // Leave room for street
+    // Slightly tighter gap to make it challenging but fair
+    const gapHeight = Math.max(180, this.canvasHeight * 0.3);
+    const minGap = 60;
+    const maxGap = this.canvasHeight - gapHeight - 120;
     const gapY = Math.random() * (maxGap - minGap) + minGap;
 
     this.pipes.push({
@@ -58,7 +58,8 @@ export class GameEngine {
   update() {
     if (this.isGameOver) return;
 
-    this.pipeSpeed = Math.min(3.0, this.basePipeSpeed + this.score * 0.03);
+    // Faster acceleration over time
+    this.pipeSpeed = Math.min(6.0, this.basePipeSpeed + this.score * 0.08);
 
     this.bird.velocity += this.gravity;
     if (this.bird.velocity > this.maxFallSpeed) {
@@ -66,14 +67,14 @@ export class GameEngine {
     }
 
     this.bird.y += this.bird.velocity;
-    this.bird.rotation = Math.max(-0.3, Math.min(0.8, this.bird.velocity / 8));
+    this.bird.rotation = Math.max(-0.4, Math.min(1.2, this.bird.velocity / 8));
 
-    // Ground/Ceiling collision
     if (this.bird.y > this.canvasHeight - 80 || this.bird.y < 30) {
       this.isGameOver = true;
     }
 
-    const spawnDistance = 500;
+    // Reduced spawn distance so pipes come at you faster
+    const spawnDistance = 320;
     if (
       this.pipes.length === 0 ||
       this.pipes[this.pipes.length - 1].x < this.canvasWidth - spawnDistance
