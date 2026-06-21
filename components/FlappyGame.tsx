@@ -67,7 +67,8 @@ export default function FlappyGame({
     // Random Jumpscare Timer Variables
     let jumpScareTimer = 0;
     let nextJumpScareThreshold = 3 + Math.random() * 12; // Random time between 3s and 15s
-    let activeJumpScareImg = null;
+    // FIX: Explicitly type as HTMLImageElement or null to fix Vercel TypeScript error
+    let activeJumpScareImg: HTMLImageElement | null = null;
     let jumpScareAlpha = 0;
     let jumpScareActiveTime = 0;
     let redFlashAlpha = 0;
