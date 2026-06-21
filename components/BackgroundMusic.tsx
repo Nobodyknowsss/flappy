@@ -2,10 +2,11 @@
 import { useState, useEffect, useRef } from "react";
 
 export default function BackgroundMusic() {
-  const [isPlaying, setIsPlaying] = useState(true); // Defaults to true (unmuted)
+  const [isPlaying, setIsPlaying] = useState(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const hasStartedRef = useRef(false); // Prevents multiple intervals from starting
+  const nextNoteTimeRef = useRef(0);
+  const noteIndexRef = useRef(0);
 
   const melody = [
     523.25, 659.25, 783.99, 659.25, 523.25, 587.33, 659.25, 783.99, 880.0,
@@ -32,40 +33,47 @@ export default function BackgroundMusic() {
     osc.stop(time + duration);
   };
 
+  const scheduler = () => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    // While there are notes that will need to play before the next timeout, schedule them
+    while (nextNoteTimeRef.current < ctx.currentTime + 0.1) {
+      const note = melody[noteIndexRef.current % melody.length];
+      playNote(note, nextNoteTimeRef.current, 0.2);
+      nextNoteTimeRef.current += 0.3; // Tempo
+      noteIndexRef.current++;
+    }
+  };
+
   const startMusic = () => {
-    if (hasStartedRef.current) return;
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (
         window.AudioContext || (window as any).webkitAudioContext
       )();
     }
 
-    // Resume context if it's suspended (browser autoplay policy)
     if (audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume();
     }
 
-    hasStartedRef.current = true;
-    let time = audioCtxRef.current.currentTime + 0.1;
-    let i = 0;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    nextNoteTimeRef.current = audioCtxRef.current.currentTime + 0.1;
+    intervalRef.current = setInterval(scheduler, 25);
+  };
 
-    intervalRef.current = setInterval(() => {
-      const note = melody[i % melody.length];
-      playNote(note, time, 0.2);
-      time += 0.3;
-      i++;
-    }, 300);
+  const stopMusic = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   };
 
   const toggleMusic = () => {
     if (isPlaying) {
-      // Turn off
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      hasStartedRef.current = false;
+      stopMusic();
       setIsPlaying(false);
     } else {
-      // Turn on
       setIsPlaying(true);
       startMusic();
     }
@@ -85,7 +93,7 @@ export default function BackgroundMusic() {
     window.addEventListener("keydown", handleFirstInteraction);
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      stopMusic();
       window.removeEventListener("click", handleFirstInteraction);
       window.removeEventListener("touchstart", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);

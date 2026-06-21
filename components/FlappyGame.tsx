@@ -5,19 +5,21 @@ import { GameEngine } from "@/lib/gameEngine";
 interface FlappyGameProps {
   avatarImg: string;
   jumpscareImages: string[];
+  sunFaceImages: string[];
   onGameOver: (score: number) => void;
 }
 
 export default function FlappyGame({
   avatarImg,
   jumpscareImages,
+  sunFaceImages,
   onGameOver,
 }: FlappyGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [score, setScore] = useState(0);
-  const scoreRef = useRef(0); // Used to track score without triggering React re-renders
+  const scoreRef = useRef(0);
 
   const bgOffsetRef = useRef({ jeepneys: 0, street: 0 });
 
@@ -78,19 +80,30 @@ export default function FlappyGame({
     });
     canvas.addEventListener("mousedown", handleInput);
 
-    // Preload jumpscare images
     const jumpScareImgs = jumpscareImages.map((src) => {
       const img = new Image();
       img.src = src;
       return img;
     });
 
-    // Jumpscare Timer Variables
+    const sunFaceImgs = sunFaceImages.map((src) => {
+      const img = new Image();
+      img.src = src;
+      return img;
+    });
+
+    // Jumpscare Variables
     let jumpScareTimer = 0;
-    let nextJumpScareThreshold = 3 + Math.random() * 6; // Random between 3s and 9s
+    let nextJumpScareThreshold = 3 + Math.random() * 6;
     let activeJumpScareImg: HTMLImageElement | null = null;
     let jumpScareActiveTime = 0;
     let redFlashAlpha = 0;
+
+    // Sun Face Variables
+    let sunFaceTimer = 0;
+    const sunFaceInterval = 15; // Every 15 seconds
+    let activeSunFaceImg: HTMLImageElement | null = null;
+    let sunFaceActiveTime = 0;
 
     let lastTime = performance.now();
     let accumulator = 0;
@@ -166,7 +179,6 @@ export default function FlappyGame({
         return;
       }
 
-      // Update score state only when it changes, using a ref to avoid restarting the useEffect
       if (engine.score !== scoreRef.current) {
         scoreRef.current = engine.score;
         setScore(engine.score);
@@ -187,13 +199,29 @@ export default function FlappyGame({
           jumpScareActiveTime = 0;
           jumpScareTimer = 0;
           nextJumpScareThreshold = 3 + Math.random() * 6;
-          redFlashAlpha = 0.6; // Quick red flash
+          redFlashAlpha = 0.6;
         }
       } else {
         jumpScareActiveTime += deltaTime;
-        // Jumpscare lasts exactly 0.5 seconds
         if (jumpScareActiveTime > 0.5) {
           activeJumpScareImg = null;
+        }
+      }
+
+      // --- SUN FACE LOGIC ---
+      if (!activeSunFaceImg) {
+        sunFaceTimer += deltaTime;
+        if (sunFaceTimer >= sunFaceInterval) {
+          activeSunFaceImg =
+            sunFaceImgs[Math.floor(Math.random() * sunFaceImgs.length)];
+          sunFaceActiveTime = 0;
+          sunFaceTimer = 0;
+        }
+      } else {
+        sunFaceActiveTime += deltaTime;
+        if (sunFaceActiveTime > 3.0) {
+          // Lasts 3 seconds
+          activeSunFaceImg = null;
         }
       }
 
@@ -209,10 +237,37 @@ export default function FlappyGame({
         ctx.fillRect(0, 0, w, h);
       }
 
-      ctx.fillStyle = "rgba(255, 255, 200, 0.8)";
-      ctx.beginPath();
-      ctx.arc(w * 0.7, h * 0.3, 80, 0, Math.PI * 2);
-      ctx.fill();
+      // Draw Sun or Sun Face
+      const sunX = w * 0.7;
+      const sunY = h * 0.3;
+      const sunR = 80;
+
+      if (activeSunFaceImg && activeSunFaceImg.complete) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(
+          activeSunFaceImg,
+          sunX - sunR,
+          sunY - sunR,
+          sunR * 2,
+          sunR * 2,
+        );
+        ctx.restore();
+
+        // Glowing border
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 200, 0.9)";
+        ctx.lineWidth = 6;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = "rgba(255, 255, 200, 0.8)";
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       let jeepOffset = -(bgOffsetRef.current.jeepneys % 500);
       for (let x = jeepOffset - 150; x < w + 100; x += 500) {
@@ -306,7 +361,6 @@ export default function FlappyGame({
         ctx.stroke();
 
         // DRAW JUMPSCARE OVER BIRD
-        // Bird is 80x80 (radius*2). Jumpscare is 160x160 (twice the size).
         if (activeJumpScareImg && activeJumpScareImg.complete) {
           const scareSize = 160;
           ctx.drawImage(
@@ -340,7 +394,7 @@ export default function FlappyGame({
       canvas.removeEventListener("mousedown", handleInput);
       canvas.removeEventListener("contextmenu", handleContextMenu);
     };
-  }, [onGameOver, jumpscareImages]); // Removed 'score' from dependency array
+  }, [onGameOver, jumpscareImages, sunFaceImages]);
 
   return (
     <div

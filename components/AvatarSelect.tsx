@@ -10,7 +10,7 @@ interface Avatar {
 const avatars: Avatar[] = [
   {
     name: "KaKa",
-    img: "https://z-cdn-media.chatglm.cn/files/e34cb6c3-6aae-4a2d-b92e-2ba64d46d805.png?auth_key=1882017101-cab4060b05344f63a1d9d386a173d60a-0-72de7b9d07a2d24abe2ffb2f6cd8c1f5",
+    img: "https://z-cdn-media.chatglm.cn/files/d74edd88-092f-4715-850e-3a6f9f40cbc9.png?auth_key=1882022064-6536aa70546049a5962f6c6080e25c4d-0-d499298c7d65fedda1b081a8b96049ce",
   },
   {
     name: "manoK",
@@ -46,10 +46,10 @@ export default function AvatarSelect({
       <div className="relative bg-gradient-to-br from-yellow-400 via-amber-500 to-red-600 p-1 rounded-2xl shadow-2xl max-w-2xl w-full">
         <div className="bg-gray-900 p-6 rounded-xl border-2 border-yellow-300">
           <h1 className="text-4xl md:text-5xl font-extrabold text-center text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-red-500 mb-2 drop-shadow-lg">
-            MANILA BIRD RUN
+            CENTRALIAN BIRD
           </h1>
           <p className="text-center text-white mb-8 font-bold tracking-wider">
-            Pili na ng tauhan! (Choose your character)
+            Choose your Manok
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
