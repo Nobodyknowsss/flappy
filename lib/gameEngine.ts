@@ -19,10 +19,10 @@ export class GameEngine {
   bird: Bird;
   pipes: Pipe[] = [];
   score: number = 0;
-  gravity: number = 0.2; // Very low gravity so the bird floats and falls slowly
-  flapStrength: number = -6; // Gentle, controlled jump
-  maxFallSpeed: number = 4; // Prevents the bird from dropping fast at all
-  basePipeSpeed: number = 1.5; // Slow, relaxed pace
+  gravity: number = 0.2;
+  flapStrength: number = -6;
+  maxFallSpeed: number = 4;
+  basePipeSpeed: number = 1.5;
   pipeSpeed: number = 1.5;
   isGameOver: boolean = false;
 
@@ -40,14 +40,17 @@ export class GameEngine {
   }
 
   spawnPipe() {
+    // Gap height is now 35% of the screen height, making it responsive
+    const gapHeight = Math.max(220, this.canvasHeight * 0.35);
     const minGap = 80;
-    const maxGap = this.canvasHeight - 400;
+    const maxGap = this.canvasHeight - gapHeight - 120; // Leave room for street
     const gapY = Math.random() * (maxGap - minGap) + minGap;
+
     this.pipes.push({
       x: this.canvasWidth,
       gapY,
       width: 90,
-      gapHeight: 300, // Huge gap so you barely have to adjust your height
+      gapHeight,
       passed: false,
     });
   }
@@ -55,13 +58,9 @@ export class GameEngine {
   update() {
     if (this.isGameOver) return;
 
-    // Very slow gradual speed increase
     this.pipeSpeed = Math.min(3.0, this.basePipeSpeed + this.score * 0.03);
 
-    // Bird physics
     this.bird.velocity += this.gravity;
-
-    // Cap the fall speed so it drops slowly
     if (this.bird.velocity > this.maxFallSpeed) {
       this.bird.velocity = this.maxFallSpeed;
     }
@@ -74,7 +73,6 @@ export class GameEngine {
       this.isGameOver = true;
     }
 
-    // Pipe movement and spawning (Spaced very far apart)
     const spawnDistance = 500;
     if (
       this.pipes.length === 0 ||
@@ -83,7 +81,7 @@ export class GameEngine {
       this.spawnPipe();
     }
 
-    const birdRadius = 35; // Collision radius
+    const birdRadius = 35;
 
     this.pipes.forEach((pipe) => {
       pipe.x -= this.pipeSpeed;

@@ -32,10 +32,37 @@ export default function FlappyGame({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Store cached gradients to prevent re-calculating them every frame (Huge performance boost)
+    let skyGrad: CanvasGradient | null = null;
+    let pipeGrad: CanvasGradient | null = null;
+
     const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      engineRef.current = new GameEngine(canvas.width, canvas.height);
+      // Cap DPR at 2 for mobile performance. Rendering at 3x or 4x causes severe lag on phones.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const logicalWidth = window.innerWidth;
+      const logicalHeight = window.innerHeight;
+
+      canvas.width = logicalWidth * dpr;
+      canvas.height = logicalHeight * dpr;
+      canvas.style.width = `${logicalWidth}px`;
+      canvas.style.height = `${logicalHeight}px`;
+
+      // Scale the context so we can draw using logical coordinates
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+      ctx.scale(dpr, dpr);
+
+      engineRef.current = new GameEngine(logicalWidth, logicalHeight);
+
+      // Cache Gradients
+      skyGrad = ctx.createLinearGradient(0, 0, 0, logicalHeight);
+      skyGrad.addColorStop(0, "#FF7F50");
+      skyGrad.addColorStop(0.5, "#FF6B6B");
+      skyGrad.addColorStop(1, "#4A0072");
+
+      pipeGrad = ctx.createLinearGradient(0, 0, 90, 0); // Width is 90
+      pipeGrad.addColorStop(0, "#FF8C00");
+      pipeGrad.addColorStop(0.5, "#FFD700");
+      pipeGrad.addColorStop(1, "#FF8C00");
     };
 
     resizeCanvas();
@@ -46,8 +73,12 @@ export default function FlappyGame({
       engineRef.current?.flap();
     };
 
+    // Prevent context menu on long press for mobile
+    const handleContextMenu = (e: Event) => e.preventDefault();
+
     canvas.addEventListener("touchstart", handleInput, { passive: false });
     canvas.addEventListener("touchmove", handleInput, { passive: false });
+    canvas.addEventListener("contextmenu", handleContextMenu);
 
     window.addEventListener("keydown", (e) => {
       if (e.code === "Space") {
@@ -57,23 +88,24 @@ export default function FlappyGame({
     });
     canvas.addEventListener("mousedown", handleInput);
 
-    // Preload jumpscare images
     const jumpScareImgs = jumpscareImages.map((src) => {
       const img = new Image();
       img.src = src;
       return img;
     });
 
-    // Random Jumpscare Timer Variables
     let jumpScareTimer = 0;
-    let nextJumpScareThreshold = 3 + Math.random() * 12; // Random time between 3s and 15s
-    // FIX: Explicitly type as HTMLImageElement or null to fix Vercel TypeScript error
+    let nextJumpScareThreshold = 3 + Math.random() * 12;
     let activeJumpScareImg: HTMLImageElement | null = null;
     let jumpScareAlpha = 0;
     let jumpScareActiveTime = 0;
     let redFlashAlpha = 0;
 
+    // Fixed Timestep Variables (Ensures game runs at same speed on 60Hz and 120Hz screens)
     let lastTime = performance.now();
+    let accumulator = 0;
+    const step = 1 / 60; // 60 updates per second
+
     let animationFrameId: number;
 
     const drawJeepney = (x: number, y: number, scale: number) => {
@@ -121,55 +153,63 @@ export default function FlappyGame({
     };
 
     const render = (now: number) => {
-      const deltaTime = (now - lastTime) / 1000;
+      const deltaTime = Math.min(0.1, (now - lastTime) / 1000);
       lastTime = now;
+      accumulator += deltaTime;
 
       const engine = engineRef.current;
       if (!engine) return;
 
-      engine.update();
+      let isOver = false;
 
-      if (engine.isGameOver) {
+      // Fixed Timestep Update Loop
+      while (accumulator >= step) {
+        engine.update();
+        accumulator -= step;
+        if (engine.isGameOver) {
+          isOver = true;
+          break;
+        }
+      }
+
+      if (isOver || engine.isGameOver) {
         cancelAnimationFrame(animationFrameId);
         onGameOver(engine.score);
         return;
       }
 
       setScore(engine.score);
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
 
-      bgOffsetRef.current.jeepneys += engine.pipeSpeed * 0.5;
-      bgOffsetRef.current.street += engine.pipeSpeed;
+      bgOffsetRef.current.jeepneys += engine.pipeSpeed * 0.5 * (deltaTime * 60);
+      bgOffsetRef.current.street += engine.pipeSpeed * (deltaTime * 60);
 
       // --- RANDOM JUMPSCARE LOGIC ---
       if (!activeJumpScareImg) {
         jumpScareTimer += deltaTime;
         if (jumpScareTimer >= nextJumpScareThreshold) {
-          // Trigger jumpscare
           activeJumpScareImg =
             jumpScareImgs[Math.floor(Math.random() * jumpScareImgs.length)];
-          jumpScareAlpha = 0; // Start at 0 and ramp up instantly
+          jumpScareAlpha = 0;
           jumpScareActiveTime = 0;
           jumpScareTimer = 0;
-          nextJumpScareThreshold = 3 + Math.random() * 12; // Set next random time
-          redFlashAlpha = 0.8; // Trigger red flash
+          nextJumpScareThreshold = 3 + Math.random() * 12;
+          redFlashAlpha = 0.8;
         }
       } else {
-        // Jumpscare lasts 1.2 seconds total
         jumpScareActiveTime += deltaTime;
         if (jumpScareActiveTime < 0.1) {
-          jumpScareAlpha = 1; // Appear instantly
+          jumpScareAlpha = 1;
         } else if (jumpScareActiveTime < 0.8) {
-          jumpScareAlpha = 1; // Stay on screen
+          jumpScareAlpha = 1;
         } else if (jumpScareActiveTime < 1.2) {
-          jumpScareAlpha = 1 - (jumpScareActiveTime - 0.8) / 0.4; // Fade out fast
+          jumpScareAlpha = 1 - (jumpScareActiveTime - 0.8) / 0.4;
         } else {
-          activeJumpScareImg = null; // End jumpscare
+          activeJumpScareImg = null;
         }
       }
 
-      // Fade out red flash quickly
       if (redFlashAlpha > 0) {
         redFlashAlpha -= deltaTime * 2;
         if (redFlashAlpha < 0) redFlashAlpha = 0;
@@ -177,13 +217,11 @@ export default function FlappyGame({
 
       // --- RENDERING ---
 
-      // 1. Sky Gradient
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, h);
-      skyGrad.addColorStop(0, "#FF7F50");
-      skyGrad.addColorStop(0.5, "#FF6B6B");
-      skyGrad.addColorStop(1, "#4A0072");
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, w, h);
+      // 1. Sky Gradient (Cached)
+      if (skyGrad) {
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
 
       // Sun
       ctx.fillStyle = "rgba(255, 255, 200, 0.8)";
@@ -195,11 +233,10 @@ export default function FlappyGame({
       if (activeJumpScareImg && activeJumpScareImg.complete) {
         ctx.save();
         ctx.globalAlpha = jumpScareAlpha;
-        const faceSize = h * 1.3; // Massive size
+        const faceSize = h * 1.3;
         const faceX = w / 2 - faceSize / 2;
         const faceY = h / 2 - faceSize / 2;
 
-        // Draw circular face
         ctx.beginPath();
         ctx.arc(w / 2, h / 2, faceSize / 2, 0, Math.PI * 2);
         ctx.clip();
@@ -215,17 +252,14 @@ export default function FlappyGame({
 
       // 4. Pipes
       engine.pipes.forEach((pipe) => {
-        const pipeGrad = ctx.createLinearGradient(
-          pipe.x,
-          0,
-          pipe.x + pipe.width,
-          0,
-        );
-        pipeGrad.addColorStop(0, "#FF8C00");
-        pipeGrad.addColorStop(0.5, "#FFD700");
-        pipeGrad.addColorStop(1, "#FF8C00");
-
-        ctx.fillStyle = pipeGrad;
+        if (pipeGrad) {
+          // Gradient is 90px wide, shift it to match pipe.x
+          const grad = ctx.createLinearGradient(pipe.x, 0, pipe.x + 90, 0);
+          grad.addColorStop(0, "#FF8C00");
+          grad.addColorStop(0.5, "#FFD700");
+          grad.addColorStop(1, "#FF8C00");
+          ctx.fillStyle = grad;
+        }
         ctx.strokeStyle = "#8B4513";
         ctx.lineWidth = 4;
 
@@ -327,13 +361,19 @@ export default function FlappyGame({
       canvas.removeEventListener("touchstart", handleInput);
       canvas.removeEventListener("touchmove", handleInput);
       canvas.removeEventListener("mousedown", handleInput);
+      canvas.removeEventListener("contextmenu", handleContextMenu);
     };
   }, [onGameOver, jumpscareImages]);
 
   return (
     <div
       className="fixed inset-0 w-[100vw] h-[100dvh] bg-black overflow-hidden touch-none select-none"
-      style={{ WebkitTapHighlightColor: "transparent" }}
+      style={{
+        WebkitTapHighlightColor: "transparent",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <canvas
         ref={canvasRef}
